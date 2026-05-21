@@ -20,7 +20,10 @@ export function resolveOutboundSubject(
   return template
     .replace(/\{subject\}/g, inboundSubject)
     .replace(/\{tail\}/g, tail)
-    .replace(/\{(\d+)\}/g, (_m, idx) => captures.wildcards[Number(idx) - 1] ?? "");
+    .replace(
+      /\{(\d+)\}/g,
+      (_m, idx) => captures.wildcards[Number(idx) - 1] ?? "",
+    );
 }
 
 export interface SubjectMatch {

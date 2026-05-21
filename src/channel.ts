@@ -46,7 +46,8 @@ function readRawAccountConfig(
   // multi-account channels the per-account config lives under
   // `.accounts.<accountId>`; otherwise the top-level block is the single
   // account.
-  const channels = (cfg as unknown as { channels?: Record<string, unknown> }).channels;
+  const channels = (cfg as unknown as { channels?: Record<string, unknown> })
+    .channels;
   const block = channels?.[CHANNEL_ID];
   if (!block || typeof block !== "object") return {};
   const accounts = (block as { accounts?: Record<string, unknown> }).accounts;
@@ -57,7 +58,8 @@ function readRawAccountConfig(
 }
 
 function listAccountIds(cfg: OpenClawConfig): string[] {
-  const channels = (cfg as unknown as { channels?: Record<string, unknown> }).channels;
+  const channels = (cfg as unknown as { channels?: Record<string, unknown> })
+    .channels;
   const block = channels?.[CHANNEL_ID];
   if (!block || typeof block !== "object") return [];
   const accounts = (block as { accounts?: Record<string, unknown> }).accounts;
@@ -75,11 +77,18 @@ function resolveAccount(
   return { ...parsed, accountId: accountId ?? "default" };
 }
 
-function inspectAccount(cfg: OpenClawConfig, accountId?: string | null): unknown {
+function inspectAccount(
+  cfg: OpenClawConfig,
+  accountId?: string | null,
+): unknown {
   const raw = readRawAccountConfig(cfg, accountId);
   const parsed = NatsChannelConfigSchema.safeParse(raw);
   if (!parsed.success) return { ok: false, errors: parsed.error.format() };
-  return { ok: true, account: redact(parsed.data), accountId: accountId ?? "default" };
+  return {
+    ok: true,
+    account: redact(parsed.data),
+    accountId: accountId ?? "default",
+  };
 }
 
 // ----- Setup wizard ------------------------------------------------------
@@ -104,14 +113,132 @@ function readNatsField<T = unknown>(
   cfg: OpenClawConfig,
   path: readonly string[],
 ): T | undefined {
-  let cur: unknown = (cfg as unknown as { channels?: Record<string, unknown> }).channels?.[
-    CHANNEL_ID
-  ];
+  let cur: unknown = (cfg as unknown as { channels?: Record<string, unknown> })
+    .channels?.[CHANNEL_ID];
   for (const key of path) {
     if (!cur || typeof cur !== "object") return undefined;
     cur = (cur as Record<string, unknown>)[key];
   }
   return cur as T | undefined;
+}
+
+// ----- Non-interactive setup (CLI flags / env vars) -----------------------
+//
+// Recognized environment variables for `openclaw channels add --channel nats
+// --useEnv true` style installs (suitable for Docker / CI):
+//
+//   NATS_TOKEN                       — auth token (optional)
+//   NATS_SERVERS                     — comma-separated NATS URLs (or single URL)
+//   NATS_INBOUND_SUBJECT             — subject (or wildcard) to subscribe to
+//   NATS_QUEUE_GROUP                 — queue group name
+//   NATS_OUTBOUND_SUBJECT_TEMPLATE   — e.g. openclaw.response.{tail}
+//   NATS_HMAC_SECRET                 — envelope HMAC secret (optional)
+//   NATS_REQUIRE_SIGNATURE           — "true"/"false" (default true when secret set)
+//   NATS_MAX_CLOCK_SKEW_SECONDS      — integer (default 300)
+//   NATS_ALLOW_FROM                  — comma-separated sender allowlist
+//
+// CLI flags (`--token`, `--secret`, `--url`) are also honored where they map
+// to existing `ChannelSetupInput` slots; env vars are the recommended path
+// for fields without a natural slot (subject / queueGroup / template).
+
+const ENV_TOKEN = "NATS_TOKEN";
+const ENV_SERVERS = "NATS_SERVERS";
+const ENV_INBOUND_SUBJECT = "NATS_INBOUND_SUBJECT";
+const ENV_QUEUE_GROUP = "NATS_QUEUE_GROUP";
+const ENV_OUTBOUND_TEMPLATE = "NATS_OUTBOUND_SUBJECT_TEMPLATE";
+const ENV_HMAC_SECRET = "NATS_HMAC_SECRET";
+const ENV_REQUIRE_SIGNATURE = "NATS_REQUIRE_SIGNATURE";
+const ENV_MAX_SKEW = "NATS_MAX_CLOCK_SKEW_SECONDS";
+const ENV_ALLOW_FROM = "NATS_ALLOW_FROM";
+
+function firstNonEmpty(...vals: Array<string | undefined>): string | undefined {
+  for (const v of vals) {
+    if (typeof v === "string" && v.trim()) return v.trim();
+  }
+  return undefined;
+}
+
+function parseServers(raw: string): string | string[] {
+  const list = raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return list.length === 1 ? list[0] : list;
+}
+
+function parseAllowFrom(raw: string): string[] {
+  return raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+function applyNonInteractiveSetup({
+  cfg,
+  input,
+  env,
+}: {
+  cfg: OpenClawConfig;
+  input: Record<string, unknown>;
+  env: NodeJS.ProcessEnv;
+}): OpenClawConfig {
+  const readInput = (key: string): string | undefined => {
+    const v = input[key];
+    return typeof v === "string" ? v : undefined;
+  };
+
+  const token = firstNonEmpty(readInput("token"), env[ENV_TOKEN]);
+  const servers = firstNonEmpty(
+    readInput("url"),
+    readInput("baseUrl"),
+    env[ENV_SERVERS],
+  );
+  const inboundSubject = firstNonEmpty(env[ENV_INBOUND_SUBJECT]);
+  const queueGroup = firstNonEmpty(env[ENV_QUEUE_GROUP]);
+  const outboundTemplate = firstNonEmpty(env[ENV_OUTBOUND_TEMPLATE]);
+  const hmacSecret = firstNonEmpty(readInput("secret"), env[ENV_HMAC_SECRET]);
+  const requireSignatureRaw = firstNonEmpty(env[ENV_REQUIRE_SIGNATURE]);
+  const maxSkewRaw = firstNonEmpty(env[ENV_MAX_SKEW]);
+  const allowFromRaw = firstNonEmpty(env[ENV_ALLOW_FROM]);
+
+  const patch: Record<string, unknown> = {};
+  if (token) patch.token = token;
+  if (servers) patch.servers = parseServers(servers);
+
+  if (inboundSubject || queueGroup) {
+    const existing =
+      readNatsField<Record<string, unknown>>(cfg, ["inbound"]) ?? {};
+    patch.inbound = {
+      ...existing,
+      ...(inboundSubject ? { subject: inboundSubject } : {}),
+      ...(queueGroup ? { queueGroup } : {}),
+    };
+  }
+
+  if (outboundTemplate) {
+    const existing =
+      readNatsField<Record<string, unknown>>(cfg, ["outbound"]) ?? {};
+    patch.outbound = { ...existing, subjectTemplate: outboundTemplate };
+  }
+
+  if (hmacSecret || requireSignatureRaw || maxSkewRaw) {
+    const existing =
+      readNatsField<Record<string, unknown>>(cfg, ["security"]) ?? {};
+    const security: Record<string, unknown> = { ...existing };
+    if (hmacSecret) security.hmacSecret = hmacSecret;
+    if (requireSignatureRaw) {
+      security.requireSignature = requireSignatureRaw.toLowerCase() === "true";
+    }
+    if (maxSkewRaw) {
+      const n = Number.parseInt(maxSkewRaw, 10);
+      if (Number.isFinite(n) && n > 0) security.maxClockSkewSeconds = n;
+    }
+    patch.security = security;
+  }
+
+  if (allowFromRaw) patch.allowFrom = parseAllowFrom(allowFromRaw);
+
+  return applyNatsPatch(cfg, patch);
 }
 
 const natsSetupWizard: ChannelSetupWizard = {
@@ -151,7 +278,8 @@ const natsSetupWizard: ChannelSetupWizard = {
       preferredEnvVar: "NATS_TOKEN",
       envPrompt: "Use NATS_TOKEN from environment?",
       keepPrompt: "Keep current NATS token?",
-      inputPrompt: "Enter NATS auth token (leave blank if the server requires no auth):",
+      inputPrompt:
+        "Enter NATS auth token (leave blank if the server requires no auth):",
       inspect: ({ cfg }) => {
         const token = readNatsField<string>(cfg, ["token"]);
         // A configured-but-tokenless account is still valid; mark as configured
@@ -196,7 +324,8 @@ const natsSetupWizard: ChannelSetupWizard = {
           ...(readNatsField<Record<string, unknown>>(cfg, ["security"]) ?? {}),
           hmacSecret: resolvedValue || undefined,
         };
-        if (!resolvedValue) delete (security as Record<string, unknown>).hmacSecret;
+        if (!resolvedValue)
+          delete (security as Record<string, unknown>).hmacSecret;
         return applyNatsPatch(cfg, { security });
       },
     },
@@ -216,14 +345,18 @@ const natsSetupWizard: ChannelSetupWizard = {
           .split(",")
           .map((s) => s.trim())
           .filter(Boolean);
-        return applyNatsPatch(cfg, { servers: list.length === 1 ? list[0] : list });
+        return applyNatsPatch(cfg, {
+          servers: list.length === 1 ? list[0] : list,
+        });
       },
     },
     {
       inputKey: "httpHost",
-      message: "Inbound subject (NATS wildcards allowed, e.g. openclaw.prompt.>)",
+      message:
+        "Inbound subject (NATS wildcards allowed, e.g. openclaw.prompt.>)",
       required: true,
-      currentValue: ({ cfg }) => readNatsField<string>(cfg, ["inbound", "subject"]),
+      currentValue: ({ cfg }) =>
+        readNatsField<string>(cfg, ["inbound", "subject"]),
       validate: ({ value }) => (value.trim() ? undefined : "Required"),
       applySet: ({ cfg, value }) => {
         const inbound = {
@@ -280,6 +413,14 @@ export const natsChannelPlugin: ChannelPlugin<ResolvedNatsAccount> =
     base: {
       id: CHANNEL_ID,
       setupWizard: natsSetupWizard,
+      setup: {
+        applyAccountConfig: ({ cfg, input }) =>
+          applyNonInteractiveSetup({
+            cfg,
+            input: input as unknown as Record<string, unknown>,
+            env: process.env,
+          }),
+      },
       meta: {
         id: CHANNEL_ID,
         label: "NATS",
@@ -305,10 +446,13 @@ export const natsChannelPlugin: ChannelPlugin<ResolvedNatsAccount> =
         inspectAccount,
         defaultAccountId: (_cfg) => "default",
         isConfigured: (account) =>
-          Boolean(account.inbound?.subject && account.outbound?.subjectTemplate),
+          Boolean(
+            account.inbound?.subject && account.outbound?.subjectTemplate,
+          ),
         unconfiguredReason: (account) => {
           if (!account.inbound?.subject) return "missing inbound.subject";
-          if (!account.outbound?.subjectTemplate) return "missing outbound.subjectTemplate";
+          if (!account.outbound?.subjectTemplate)
+            return "missing outbound.subjectTemplate";
           return "";
         },
         resolveAllowFrom: ({ cfg, accountId }) => {
@@ -357,17 +501,21 @@ export const natsChannelPlugin: ChannelPlugin<ResolvedNatsAccount> =
 
               // ChannelRuntimeSurface is intentionally typed loosely for
               // external plugins (per SDK docs). Cast to `any` for the call.
-              const runtimeReply = (ctx.channelRuntime as unknown as {
-                reply: {
-                  dispatchReplyWithBufferedBlockDispatcher: (args: {
-                    ctx: Record<string, unknown>;
-                    cfg: OpenClawConfig;
-                    dispatcherOptions: {
-                      deliver: (payload: { text?: string }) => Promise<void> | void;
-                    };
-                  }) => Promise<void>;
-                };
-              }).reply;
+              const runtimeReply = (
+                ctx.channelRuntime as unknown as {
+                  reply: {
+                    dispatchReplyWithBufferedBlockDispatcher: (args: {
+                      ctx: Record<string, unknown>;
+                      cfg: OpenClawConfig;
+                      dispatcherOptions: {
+                        deliver: (payload: {
+                          text?: string;
+                        }) => Promise<void> | void;
+                      };
+                    }) => Promise<void>;
+                  };
+                }
+              ).reply;
 
               try {
                 await runtimeReply.dispatchReplyWithBufferedBlockDispatcher({
@@ -423,7 +571,9 @@ export const natsChannelPlugin: ChannelPlugin<ResolvedNatsAccount> =
       dm: {
         channelKey: CHANNEL_ID,
         resolvePolicy: (account) =>
-          account.allowFrom && account.allowFrom.length > 0 ? "allowlist" : "open",
+          account.allowFrom && account.allowFrom.length > 0
+            ? "allowlist"
+            : "open",
         resolveAllowFrom: (account) => account.allowFrom ?? null,
         defaultPolicy: "allowlist",
       },

@@ -1,4 +1,8 @@
-import { connect, type NatsConnection, type Subscription } from "@nats-io/transport-node";
+import {
+  connect,
+  type NatsConnection,
+  type Subscription,
+} from "@nats-io/transport-node";
 
 export interface NatsClientOptions {
   servers: string | string[];
@@ -56,7 +60,9 @@ export class NatsClient {
           console.error("[nats-channel] inbound handler error", err);
         }
       }
-    })().catch((err) => console.error("[nats-channel] subscription loop error", err));
+    })().catch((err) =>
+      console.error("[nats-channel] subscription loop error", err),
+    );
   }
 
   async publish(subject: string, data: Uint8Array): Promise<void> {

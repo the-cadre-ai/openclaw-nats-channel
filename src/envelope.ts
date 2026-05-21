@@ -21,14 +21,17 @@ export interface OutboundPayload {
 
 function canonicalize(value: unknown): string {
   if (value === null || typeof value !== "object") return JSON.stringify(value);
-  if (Array.isArray(value)) return "[" + value.map(canonicalize).join(",") + "]";
+  if (Array.isArray(value))
+    return "[" + value.map(canonicalize).join(",") + "]";
   const keys = Object.keys(value as Record<string, unknown>).sort();
   return (
     "{" +
     keys
       .map(
         (k) =>
-          JSON.stringify(k) + ":" + canonicalize((value as Record<string, unknown>)[k]),
+          JSON.stringify(k) +
+          ":" +
+          canonicalize((value as Record<string, unknown>)[k]),
       )
       .join(",") +
     "}"
@@ -45,8 +48,13 @@ function signableBytes(env: Omit<NatsEnvelope, "signature">): string {
   });
 }
 
-export function sign(env: Omit<NatsEnvelope, "signature">, secret: string): string {
-  return createHmac("sha256", secret).update(signableBytes(env)).digest("base64");
+export function sign(
+  env: Omit<NatsEnvelope, "signature">,
+  secret: string,
+): string {
+  return createHmac("sha256", secret)
+    .update(signableBytes(env))
+    .digest("base64");
 }
 
 export function verify(env: NatsEnvelope, secret: string): boolean {
@@ -64,7 +72,9 @@ export function encode<T>(env: NatsEnvelope<T>): Uint8Array {
 
 export class EnvelopeDecodeError extends Error {}
 
-export function decode<T = unknown>(bytes: Uint8Array | string): NatsEnvelope<T> {
+export function decode<T = unknown>(
+  bytes: Uint8Array | string,
+): NatsEnvelope<T> {
   let text: string;
   try {
     text = typeof bytes === "string" ? bytes : new TextDecoder().decode(bytes);

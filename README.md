@@ -89,6 +89,44 @@ Example: inbound pattern `openclaw.prompt.>`, inbound subject
 Canonicalization sorts object keys lexicographically before signing, so
 producers in any language can compute matching signatures.
 
+## Non-interactive install (Docker / CI)
+
+When any flag is passed to `openclaw channels add`, the wizard is skipped and
+the plugin's `setup.applyAccountConfig` runs. This implementation reads from
+both CLI flags AND environment variables, so you can drive the install entirely
+from env in a Dockerfile.
+
+Recognized environment variables:
+
+| Env var                          | Maps to                                                    | Required |
+| -------------------------------- | ---------------------------------------------------------- | -------- |
+| `NATS_TOKEN`                     | `channels.nats.token`                                      | no       |
+| `NATS_SERVERS`                   | `channels.nats.servers` (comma-list)                       | yes      |
+| `NATS_INBOUND_SUBJECT`           | `channels.nats.inbound.subject`                            | yes      |
+| `NATS_QUEUE_GROUP`               | `channels.nats.inbound.queueGroup`                         | yes      |
+| `NATS_OUTBOUND_SUBJECT_TEMPLATE` | `channels.nats.outbound.subjectTemplate`                   | yes      |
+| `NATS_HMAC_SECRET`               | `channels.nats.security.hmacSecret`                        | no       |
+| `NATS_REQUIRE_SIGNATURE`         | `channels.nats.security.requireSignature` (`true`/`false`) | no       |
+| `NATS_MAX_CLOCK_SKEW_SECONDS`    | `channels.nats.security.maxClockSkewSeconds`               | no       |
+| `NATS_ALLOW_FROM`                | `channels.nats.allowFrom` (comma-list)                     | no       |
+
+CLI flags also work where they map to built-in `ChannelSetupInput` slots —
+`--token`, `--secret`, `--url` — and override the corresponding env var.
+
+```dockerfile
+# Example Dockerfile snippet
+RUN openclaw plugins install /opt/openclaw-nats-channel \
+ && NATS_SERVERS=nats://nats:4222 \
+    NATS_INBOUND_SUBJECT='openclaw.prompt.>' \
+    NATS_QUEUE_GROUP=claw \
+    NATS_OUTBOUND_SUBJECT_TEMPLATE='openclaw.response.{tail}' \
+    NATS_TOKEN="$NATS_TOKEN" \
+    openclaw channels add --channel nats --useEnv true
+```
+
+`--useEnv true` is a no-op input field that exists purely to satisfy
+`openclaw channels add`'s "any flag means non-interactive" trigger.
+
 ## Development
 
 ```bash
@@ -119,11 +157,11 @@ npm run build
 ## Status
 
 `0.01-beta` — feature-complete for the documented flow, fully tested at the
-unit/contract layer, and built against the real `openclaw@2026.5.x` plugin
-SDK (`createChatChannelPlugin`, `defineChannelPluginEntry`,
-`defineSetupPluginEntry` from `openclaw/plugin-sdk/channel-core`). Not yet
-validated against a live OpenClaw runtime; the `channelRuntime.reply.*` call
-shape in `gateway.startAccount` may need tweaks once exercised end-to-end.
+unit/contract layer, and built against the real `openclaw@2026.5.x` plugin SDK
+(`createChatChannelPlugin`, `defineChannelPluginEntry`, `defineSetupPluginEntry`
+from `openclaw/plugin-sdk/channel-core`). Not yet validated against a live
+OpenClaw runtime; the `channelRuntime.reply.*` call shape in
+`gateway.startAccount` may need tweaks once exercised end-to-end.
 
 ## Commit & PR Conventions
 

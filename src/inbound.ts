@@ -48,7 +48,11 @@ export function preProcess(
     };
   }
 
-  if (!env.payload || typeof env.payload !== "object" || typeof env.payload.prompt !== "string") {
+  if (
+    !env.payload ||
+    typeof env.payload !== "object" ||
+    typeof env.payload.prompt !== "string"
+  ) {
     return { ok: false, reason: "missing-prompt" };
   }
 
@@ -78,6 +82,9 @@ export function preProcess(
   return { ok: true, subject: msg.subject, reply: msg.reply, envelope: env };
 }
 
-export function sessionKey(subject: string, sender: string | undefined): string {
+export function sessionKey(
+  subject: string,
+  sender: string | undefined,
+): string {
   return `nats:${subject}|${sender ?? "anon"}`;
 }
