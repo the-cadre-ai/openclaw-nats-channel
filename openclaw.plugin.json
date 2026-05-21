@@ -1,0 +1,120 @@
+{
+  "id": "openclaw-nats-channel",
+  "kind": "channel",
+  "name": "OpenClaw NATS Channel",
+  "description": "Bridge NATS subjects to the OpenClaw chat model. Inbound NATS messages are treated as prompts; LLM responses are published back to NATS.",
+  "version": "0.0.1-beta",
+  "activation": {
+    "onStartup": false
+  },
+  "channels": ["nats"],
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  },
+  "channelConfigs": {
+    "nats": {
+      "label": "NATS",
+      "description": "Treat inbound NATS messages as prompts and publish LLM responses back to NATS.",
+      "schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["servers", "inbound", "outbound"],
+        "properties": {
+          "enabled": { "type": "boolean" },
+          "servers": {
+            "oneOf": [
+              { "type": "string" },
+              { "type": "array", "items": { "type": "string" }, "minItems": 1 }
+            ],
+            "description": "NATS server URL(s), e.g. nats://localhost:4222."
+          },
+          "token": {
+            "type": "string",
+            "description": "Optional auth token presented to the NATS server. Omit (or set to empty) for servers that require no authentication."
+          },
+          "inbound": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["subject", "queueGroup"],
+            "properties": {
+              "subject": {
+                "type": "string",
+                "description": "Subject (or wildcard, e.g. 'openclaw.prompt.>') to subscribe to."
+              },
+              "queueGroup": {
+                "type": "string",
+                "description": "Queue group for load-balanced consumers."
+              }
+            }
+          },
+          "outbound": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["subjectTemplate"],
+            "properties": {
+              "subjectTemplate": {
+                "type": "string",
+                "description": "Template for outbound subject. {tail} expands to wildcard capture from inbound subject; {subject} expands to the full inbound subject; {1}, {2}, ... expand to individual * captures."
+              }
+            }
+          },
+          "security": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "hmacSecret": {
+                "type": "string",
+                "description": "Shared secret for HMAC-SHA256 envelope signing. When omitted, inbound signatures are ignored and outbound envelopes are unsigned."
+              },
+              "requireSignature": {
+                "type": "boolean",
+                "default": true,
+                "description": "When true, reject inbound envelopes that are unsigned or have invalid signatures. Forced to false if hmacSecret is not configured."
+              },
+              "maxClockSkewSeconds": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "default": 300,
+                "description": "Reject envelopes whose timestamp differs from now by more than this."
+              }
+            }
+          },
+          "dmPolicy": {
+            "type": "string",
+            "enum": ["pairing", "allowlist", "open", "disabled"],
+            "default": "allowlist"
+          },
+          "allowFrom": {
+            "type": "array",
+            "description": "Allowlisted sender principals (envelope.sender).",
+            "items": {
+              "anyOf": [{ "type": "string" }, { "type": "number" }]
+            }
+          },
+          "groupPolicy": {
+            "type": "string",
+            "enum": ["open", "disabled", "allowlist"],
+            "default": "disabled"
+          }
+        }
+      },
+      "uiHints": {
+        "": {
+          "label": "NATS",
+          "help": "Bridge OpenClaw to a NATS message bus. Inbound messages are treated as prompts; LLM responses are published back."
+        },
+        "token": {
+          "label": "NATS Token",
+          "help": "Bearer token presented to the NATS server (sensitive)."
+        },
+        "security.hmacSecret": {
+          "label": "Envelope HMAC Secret",
+          "help": "Optional shared secret for signing/verifying envelopes (sensitive)."
+        }
+      }
+    }
+  }
+}

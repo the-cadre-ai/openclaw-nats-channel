@@ -1,0 +1,37 @@
+{
+  "name": "openclaw-nats-channel",
+  "version": "0.0.1-beta",
+  "description": "OpenClaw channel plugin that bridges NATS subjects to the OpenClaw chat model.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "openclaw": {
+    "extensions": [
+      "./index.ts"
+    ],
+    "setupEntry": "./setup-entry.ts",
+    "channel": {
+      "id": "nats",
+      "label": "NATS",
+      "blurb": "Treat inbound NATS messages as prompts and publish LLM responses back to NATS."
+    }
+  },
+  "dependencies": {
+    "@nats-io/transport-node": "^3.4.0",
+    "zod": "^3.23.8"
+  },
+  "peerDependencies": {
+    "openclaw": "^2026.5.12"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0",
+    "vitest": "^4.1.6"
+  }
+}
