@@ -89,6 +89,38 @@ Example: inbound pattern `openclaw.prompt.>`, inbound subject
 Canonicalization sorts object keys lexicographically before signing, so
 producers in any language can compute matching signatures.
 
+## Install from a git repository
+
+`openclaw plugins install` accepts `git:` specs and runs `npm install
+--omit=dev --ignore-scripts` against the cloned repo. That means **no
+build step runs at install time** — the compiled `dist/` is committed
+to this repo on every release.
+
+Supported spec forms (all accepted as the argument to `openclaw plugins install`):
+
+```bash
+# GitHub shorthand
+openclaw plugins install git:<owner>/openclaw-nats-channel
+openclaw plugins install git:<owner>/openclaw-nats-channel@v0.0.1-beta
+openclaw plugins install git:<owner>/openclaw-nats-channel#main
+
+# Full https URL
+openclaw plugins install git:https://github.com/<owner>/openclaw-nats-channel.git
+
+# ssh URL
+openclaw plugins install git:ssh://git@github.com/<owner>/openclaw-nats-channel.git
+
+# Local checkout (useful in Docker builds that COPY the source in)
+openclaw plugins install git:./openclaw-nats-channel
+```
+
+For a Dockerfile that vendors the repo:
+
+```dockerfile
+COPY openclaw-nats-channel /opt/openclaw-nats-channel
+RUN openclaw plugins install git:/opt/openclaw-nats-channel
+```
+
 ## Non-interactive install (Docker / CI)
 
 When any flag is passed to `openclaw channels add`, the wizard is skipped and

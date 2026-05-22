@@ -1,5 +1,8 @@
 node_modules/
-dist/
+# `dist/` is intentionally NOT ignored: openclaw plugin installs from git use
+# `npm install --omit=dev --ignore-scripts`, so no build runs at install time.
+# The compiled output must be committed for `openclaw plugins install git:...`
+# to work. CI rebuilds and verifies dist/ on every push.
 *.log
 .DS_Store
 .env

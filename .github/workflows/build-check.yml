@@ -1,0 +1,30 @@
+name: build-check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      # Plugin git installs run `npm install --omit=dev --ignore-scripts`, so
+      # the compiled `dist/` MUST be committed and current. Rebuild here and
+      # fail the build if the result differs from what's checked in.
+      - name: Rebuild dist/ and fail on drift
+        run: |
+          rm -rf dist/
+          npm run build
+          if ! git diff --exit-code -- dist/; then
+            echo "::error::dist/ is out of date. Run 'npm run build' locally and commit the result."
+            exit 1
+          fi

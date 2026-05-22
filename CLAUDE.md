@@ -87,6 +87,21 @@ Reference real plugin types under
 `outbound.types.d.ts`. The public helper signatures are in
 `node_modules/openclaw/dist/plugin-sdk/src/plugin-sdk/core.d.ts`.
 
+## Build output is committed (`dist/`)
+
+`openclaw plugins install git:...` runs `npm install --omit=dev
+--ignore-scripts` against the cloned repo, so **no build runs at install
+time**. The compiled `dist/` is committed to the repo on purpose:
+
+- `package.json` → `openclaw.extensions` = `["./dist/index.js"]`
+- `package.json` → `openclaw.setupEntry` = `"./dist/setup-entry.js"`
+- `.gitignore` does NOT ignore `dist/`.
+- `tsconfig.json` uses `module: "NodeNext"` so emitted imports keep `.js`
+  extensions at runtime; do not switch back to `Bundler` resolution.
+- Tests are kept out of `dist/` via `exclude: ["src/**/*.test.ts"]`.
+- `.github/workflows/build-check.yml` rebuilds `dist/` on CI and fails on
+  drift. Always `npm run build` before committing if you touched any `.ts`.
+
 ## Commands
 
 ```bash
